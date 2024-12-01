@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Price Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #a3d3d3, #19a9a9);
+            color: #333;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        h1 {
+            text-align: center;
+            color: #333; /* Darker grey for the title */
+            font-size: 48px; /* Increased font size */
+            margin-bottom: 30px; /* Increased bottom margin */
+        }
+
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: #f5f5f5; /* Light grey background for the container */
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #ccc; /* Light grey border */
+            border-radius: 30px;
+            box-sizing: border-box;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .input-group input:focus {
+            border-color: #888; /* Slightly darker grey when focused */
+            box-shadow: 0 0 8px rgba(136, 136, 136, 0.3); /* Soft shadow */
+        }
+
+        .suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 10;
+            display: none;
+        }
+
+        .suggestions .suggestion {
+            padding: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #333; /* Darker grey text */
+        }
+
+        .suggestions .suggestion:hover {
+            background-color: #f1f1f1;
+        }
+
+        .button {
+            width: 100%;
+            padding: 12px;
+            font-size: 18px;
+            font-weight: bold;
+            background-color: #888; /* Grey background */
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .button:hover {
+            background-color: #555; /* Darker grey on hover */
+        }
+
+        .price-display {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            color: #333; /* Dark grey for text */
+        }
+
+        canvas {
+            margin-top: 30px;
+        }
+
+        .price-display {
+            color: #555; /* Slightly darker grey for price text */
+        }
+
+
+        /* Additional styles for toggle switch and alert elements */
+        .toggle-container {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .toggle-container label {
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .toggle-container input[type="checkbox"] {
+            margin-left: 10px;
+            transform: scale(1.5);
+            vertical-align: middle;
+        }
+
+        .alert-settings {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .alert-settings input[type="number"] {
+            width: 50%;
+            padding: 10px;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+
+        .alert-settings button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #888;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .alert-settings button:hover {
+            background-color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Stock Price Tracker</h1>
+        <div class="input-group">
+            <input type="text" id="stockSymbol" placeholder="Search for stock symbols or names...">
+            <div id="suggestions" class="suggestions"></div>
+        </div>
+        <button class="button" id="fetchButton">Fetch Stock Data</button>
+
+        <div class="price-display" id="currentPrice"></div>
+        <canvas id="priceChart"></canvas>
+
+        <div class="toggle-container">
+            <label for="alertToggle">Enable Price Alert</label>
+            <input type="checkbox" id="alertToggle">
+        </div>
+
+        <div class="alert-settings" id="alertSettings">
+            <input type="number" id="alertThreshold" placeholder="Enter price threshold">
+            <button id="setAlertButton">Set Alert</button>
+        </div>
+    </div>
+
+    <script>
+        const fetchButton = document.getElementById('fetchButton');
+        const currentPriceDiv = document.getElementById('currentPrice');
+        const priceChart = document.getElementById('priceChart').getContext('2d');
+        const stockSymbolInput = document.getElementById('stockSymbol');
+        const suggestionsDiv = document.getElementById('suggestions');
+        const alertToggle = document.getElementById('alertToggle');
+        const alertSettings = document.getElementById('alertSettings');
+        const alertThresholdInput = document.getElementById('alertThreshold');
+        const setAlertButton = document.getElementById('setAlertButton');
+        let chartInstance;
+
+        // Predefined stock symbols and names
+        const stockSymbols = [
+            { symbol: 'AAPL', name: 'Apple Inc.' },
+            { symbol: 'NVDA', name: 'NVIDIA Corporation' },
+            { symbol: 'MSFT', name: 'Microsoft Corporation' },
+            { symbol: 'AMZN', name: 'Amazon.com, Inc.' },
+            { symbol: 'GOOG', name: 'Alphabet Inc.' },
+            { symbol: 'GOOGL', name: 'Alphabet Inc.' },
+            { symbol: 'META', name: 'Meta Platforms, Inc.' },
+            { symbol: 'TSLA', name: 'Tesla, Inc.' },
+            { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.' },
+            { symbol: 'BRK.A', name: 'Berkshire Hathaway Inc.' },
+            { symbol: 'TSM', name: 'Taiwan Semiconductor Manufacturing Company Limited' },
+            { symbol: 'AVGO', name: 'Broadcom Inc.' },
+            { symbol: 'WMT', name: 'Walmart Inc.' },
+            { symbol: 'LLY', name: 'Eli Lilly and Company' },
+            { symbol: 'JPM', name: 'JPMorgan Chase & Co.' },
+            { symbol: 'V', name: 'Visa Inc.' },
+            { symbol: 'UNH', name: 'UnitedHealth Group Incorporated' },
+            { symbol: 'XOM', name: 'Exxon Mobil Corporation' },
+            { symbol: 'ORCL', name: 'Oracle Corporation' },
+            { symbol: 'MA', name: 'Mastercard Incorporated' },
+            { symbol: 'NVO', name: 'Novo Nordisk A/S' },
+            { symbol: 'COST', name: 'Costco Wholesale Corporation' },
+            { symbol: 'HD', name: 'The Home Depot, Inc.' },
+            { symbol: 'PG', name: 'The Procter & Gamble Company' },
+            { symbol: 'NFLX', name: 'Netflix, Inc.' },
+            { symbol: 'JNJ', name: 'Johnson & Johnson' },
+            { symbol: 'BAC', name: 'Bank of America Corporation' },
+            { symbol: 'ABBV', name: 'AbbVie Inc.' },
+            { symbol: 'CRM', name: 'Salesforce, Inc.' },
+            { symbol: 'CVX', name: 'Chevron Corporation' },
+            { symbol: 'TMUS', name: 'T-Mobile US, Inc.' },
+            { symbol: 'SAP', name: 'SAP SE' },
+            { symbol: 'KO', name: 'The Coca-Cola Company' },
+            { symbol: 'ASML', name: 'ASML Holding N.V.' },
+            { symbol: 'MRK', name: 'Merck & Co., Inc.' },
+            { symbol: 'WFC', name: 'Wells Fargo & Company' },
+            { symbol: 'CSCO', name: 'Cisco Systems, Inc.' },
+            { symbol: 'BX', name: 'Blackstone Inc.' },
+            { symbol: 'ADBE', name: 'Adobe Inc.' },
+            { symbol: 'PEP', name: 'PepsiCo, Inc.' },
+            { symbol: 'ACN', name: 'Accenture plc' },
+            { symbol: 'AMD', name: 'Advanced Micro Devices, Inc.' },
+            { symbol: 'TM', name: 'Toyota Motor Corporation' },
+            { symbol: 'LIN', name: 'Linde plc' },
+            { symbol: 'NOW', name: 'ServiceNow, Inc.' },
+            { symbol: 'AXP', name: 'American Express Company' },
+            { symbol: 'DIS', name: 'The Walt Disney Company' },
+            { symbol: 'MCD', name: 'McDonald\'s Corporation' },
+            { symbol: 'MS', name: 'Morgan Stanley' },
+            { symbol: 'NVS', name: 'Novartis AG' },
+            { symbol: 'IBM', name: 'International Business Machines Corporation' },
+            { symbol: 'AZN', name: 'AstraZeneca PLC' },
+            { symbol: 'PM', name: 'Philip Morris International Inc.' },
+            { symbol: 'ABT', name: 'Abbott Laboratories' },
+            { symbol: 'TMO', name: 'Thermo Fisher Scientific Inc.' },
+            { symbol: 'GS', name: 'The Goldman Sachs Group, Inc.' },
+            { symbol: 'SHEL', name: 'Shell plc' },
+            { symbol: 'BABA', name: 'Alibaba Group Holding Limited' },
+            { symbol: 'GE', name: 'General Electric Company' },
+            { symbol: 'CAT', name: 'Caterpillar Inc.' },
+            { symbol: 'ISRG', name: 'Intuitive Surgical, Inc.' },
+            { symbol: 'VZ', name: 'Verizon Communications Inc.' },
+            { symbol: 'TXN', name: 'Texas Instruments Incorporated' },
+            { symbol: 'UPS', name: 'United Parcel Service, Inc.' },
+            { symbol: 'CSX', name: 'CSX Corporation' },
+            { symbol: 'SBUX', name: 'Starbucks Corporation' },
+            { symbol: 'LMT', name: 'Lockheed Martin Corporation' },
+            { symbol: 'INTC', name: 'Intel Corporation' },
+            { symbol: 'MMM', name: '3M Company' },
+            { symbol: 'PYPL', name: 'PayPal Holdings, Inc.' },
+            { symbol: 'SPGI', name: 'S&P Global Inc.' },
+            { symbol: 'CVS', name: 'CVS Health Corporation' },
+            { symbol: 'NKE', name: 'Nike, Inc.' },
+            { symbol: 'MDT', name: 'Medtronic plc' },
+            { symbol: 'CL', name: 'Colgate-Palmolive Company' },
+            { symbol: 'FIS', name: 'FIS' },
+            { symbol: 'DUK', name: 'Duke Energy Corporation' },
+            { symbol: 'BMY', name: 'Bristol Myers Squibb Company' },
+            { symbol: 'GE', name: 'General Electric Company' },
+            { symbol: 'C', name: 'Citigroup Inc.' }
+        ];
+
+        // Function to filter stock symbols based on input
+        function filterStockSymbols(query) {
+            return stockSymbols.filter(stock =>
+                stock.symbol.toLowerCase().includes(query.toLowerCase()) ||
+                stock.name.toLowerCase().includes(query.toLowerCase())
+            );
+        }
+
+        // Function to update suggestions dynamically
+        function updateSuggestions() {
+            const query = stockSymbolInput.value.trim();
+            if (query.length === 0) {
+                suggestionsDiv.style.display = 'none';
+                return;
+            }
+
+            const filteredStocks = filterStockSymbols(query);
+            suggestionsDiv.innerHTML = ''; // Clear current suggestions
+
+            filteredStocks.forEach(stock => {
+                const suggestion = document.createElement('div');
+                suggestion.classList.add('suggestion');
+                suggestion.textContent = `${stock.symbol} - ${stock.name}`;
+                suggestion.onclick = () => {
+                    stockSymbolInput.value = stock.symbol; // Set the selected symbol
+                    suggestionsDiv.style.display = 'none'; // Hide suggestions
+                };
+                suggestionsDiv.appendChild(suggestion);
+            });
+
+            // Show suggestions
+            suggestionsDiv.style.display = filteredStocks.length > 0 ? 'block' : 'none';
+        }
+
+        // Event listener for input changes to trigger suggestion updates
+        stockSymbolInput.addEventListener('input', updateSuggestions);
+	
+
+        // Existing code for fetching stock data
+        fetchButton.addEventListener('click', async () => {
+            const stockSymbol = stockSymbolInput.value.trim();
+            if (!stockSymbol) {
+                alert("Please enter a stock symbol!");
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://b83am8332h.execute-api.us-east-1.amazonaws.com/dev/stock?symbol=${stockSymbol}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    alert(data.message || "Error fetching stock data.");
+                    return;
+                }
+
+                const { currentPrice, timestamp, historicalData } = data;
+
+                currentPriceDiv.innerHTML = `Current Price: <strong>$${currentPrice}</strong> (as of ${new Date(timestamp).toLocaleString()})`;
+
+                const labels = Object.keys(historicalData).sort();
+                const prices = labels.map(label => historicalData[label]);
+
+                if (chartInstance) {
+                    chartInstance.destroy();
+                }
+
+                chartInstance = new Chart(priceChart, {
+                    type: 'line',
+                    data: {
+                        labels: labels.map(date => new Date(date).toLocaleString()),
+                        datasets: [{
+                            label: `${stockSymbol} Prices`,
+                            data: prices,
+                            borderColor: '#4e73df',
+                            backgroundColor: 'rgba(78, 115, 223, 0.2)',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#4e73df'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true, position: 'top' }
+                        },
+                        scales: {
+                            x: { title: { display: true, text: 'Timestamp' } },
+                            y: { title: { display: true, text: 'Price (USD)' } }
+                        }
+                    }
+                });
+
+                alertSettings.style.display = 'none';
+                alertToggle.checked = false;
+
+            } catch (error) {
+                console.error("Error:", error);
+                alert("Failed to fetch stock data. Check the console for details.");
+            }
+        });
+
+        // Toggle alert settings
+        alertToggle.addEventListener('change', () => {
+            alertSettings.style.display = alertToggle.checked ? 'block' : 'none';
+        });
+
+        // Set alert logic
+        setAlertButton.addEventListener('click', async () => {
+            const stockSymbol = stockSymbolInput.value.trim();
+            const targetPrice = parseFloat(alertThresholdInput.value);
+
+            if (!stockSymbol || isNaN(targetPrice)) {
+                alert("Please enter a valid stock symbol and price threshold!");
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://b83am8332h.execute-api.us-east-1.amazonaws.com/dev/alert`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol: stockSymbol,
+                        alertStatus: alertToggle.checked,
+                        targetPrice: targetPrice
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    alert("Alert set successfully!");
+                } else {
+                    alert(data.error || "Error setting alert.");
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                alert("Failed to set alert. Check the console for details.");
+            }
+        });
+    </script>
+</body>
+</html>
